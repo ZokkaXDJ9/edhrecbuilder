@@ -58,6 +58,9 @@ class MTGDeckBuilder(tk.Tk):
             ("Assassin's Creed", "ub_acr", ["acr"]),
             ("Transformers", "ub_bot", ["bot"]),
             ("Jurassic World", "ub_rex", ["rex"]),
+            ("Dungeons & Dragons", "ub_dnd", ["afr", "afc", "clb"]),
+            ("Final Fantasy", "ub_ff", ["fin", "fic"]),
+            ("Marvel", "ub_marvel", ["mar"]),
         ]
         
         self.search_service = SearchService(self.db, self.session, self.ub_sets_config)
