@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Database
+cards.db
+*.sqlite3
+
+# Application Data
+image_cache/
+banned_cards.json
+
+# User Data
+decks/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
