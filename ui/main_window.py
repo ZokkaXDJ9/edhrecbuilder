@@ -23,6 +23,7 @@ from ui.panels.deck_panel import DeckPanel
 from ui.panels.details_panel import DetailsPanel
 from utils import UNLIMITED_CARDS
 from ui.dialogs.versions_dialog import VersionsDialog
+from ui.dialogs.settings_dialog import SettingsDialog
 
 class MTGDeckBuilder(tk.Tk):
     def __init__(self):
@@ -98,6 +99,7 @@ class MTGDeckBuilder(tk.Tk):
         file_menu.add_command(label="Save Deck", command=self.save_deck)
         file_menu.add_command(label="Load Deck", command=self.load_deck)
         file_menu.add_separator()
+        file_menu.add_command(label="Settings", command=self.open_settings)
         file_menu.add_command(label="Exit", command=self.on_closing)
 
         # Tools Menu
@@ -112,6 +114,9 @@ class MTGDeckBuilder(tk.Tk):
         tools_menu.add_separator()
         tools_menu.add_command(label="Update Database (Offline Mode)", command=self.update_database)
         tools_menu.add_command(label="Delete All Data & Restart", command=self.reset_and_restart)
+
+    def open_settings(self):
+        SettingsDialog(self, self.open_search_settings)
 
     def create_widgets(self):
         # Status Bar (Pack first to stay at bottom)
