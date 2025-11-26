@@ -1,8 +1,10 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+import customtkinter as ctk
 import threading
+from ui.widgets import BaseToplevel, Frame, Label, Button
 
-class VersionsDialog(tk.Toplevel):
+class VersionsDialog(BaseToplevel):
     def __init__(self, parent, card, search_service, image_loader, on_add_card, action_label="Add Selected to Deck"):
         super().__init__(parent)
         self.title(f"Versions of {card.get('name')}")
@@ -22,10 +24,12 @@ class VersionsDialog(tk.Toplevel):
         
         self.transient(parent)
         self.grab_set()
+        self.lift()
+        self.focus_force()
 
     def create_widgets(self):
         # Left: List of prints
-        left_frame = ttk.Frame(self, padding=10)
+        left_frame = Frame(self)
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         columns = ("set", "number", "rarity", "artist")
@@ -43,22 +47,22 @@ class VersionsDialog(tk.Toplevel):
         scrollbar = ttk.Scrollbar(left_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
         
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
         
         self.tree.bind("<<TreeviewSelect>>", self.on_select)
 
         # Right: Preview and Actions
-        right_frame = ttk.Frame(self, padding=10, width=300)
+        right_frame = Frame(self, width=300)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH)
         
-        self.image_label = ttk.Label(right_frame, text="Loading...")
+        self.image_label = Label(right_frame, text="Loading...")
         self.image_label.pack(pady=10)
         
-        self.add_btn = ttk.Button(right_frame, text=self.action_label, command=self.add_selected, state=tk.DISABLED)
+        self.add_btn = Button(right_frame, text=self.action_label, command=self.add_selected, state=tk.DISABLED)
         self.add_btn.pack(pady=10)
         
-        ttk.Button(right_frame, text="Close", command=self.destroy).pack(pady=5)
+        Button(right_frame, text="Close", command=self.destroy).pack(pady=5)
 
     def load_prints(self):
         uri = self.card.get('prints_search_uri')
@@ -97,7 +101,7 @@ class VersionsDialog(tk.Toplevel):
         self.current_print = next((p for p in self.prints if p['id'] == card_id), None)
         
         if self.current_print:
-            self.add_btn.config(state=tk.NORMAL)
+            self.add_btn.configure(state=tk.NORMAL)
             self.show_image(self.current_print)
 
     def show_image(self, card):
@@ -108,16 +112,17 @@ class VersionsDialog(tk.Toplevel):
             image_url = card['card_faces'][0]['image_uris'].get('normal')
             
         if image_url:
-            self.image_label.config(text="Loading image...")
+            self.image_label.configure(text="Loading image...")
             self.image_loader.get_image(image_url, lambda photo: self.after(0, lambda: self._update_image(photo)))
         else:
-            self.image_label.config(image='', text="No Image")
+            self.image_label.configure(image=None, text="No Image")
 
     def _update_image(self, photo):
-        self.image_label.config(image=photo, text="")
-        self.image_label.image = photo
+        self.image_label.configure(image=photo, text="")
+        self._current_image = photo # Keep reference to prevent GC
 
     def add_selected(self):
         if self.current_print:
             self.on_add_card(self.current_print)
+
 

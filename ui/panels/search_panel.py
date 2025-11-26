@@ -1,11 +1,13 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+import customtkinter as ctk
+from ui.widgets import Frame, Label, Entry, Button, CheckBox, ComboBox
 
 from ui.dialogs.multi_select_dialog import MultiSelectDialog
 
-class SearchPanel(ttk.Frame):
+class SearchPanel(Frame):
     def __init__(self, parent, search_service, on_card_select, on_card_double_click, open_settings_callback, get_commander_callback):
-        super().__init__(parent, padding="10")
+        super().__init__(parent)
         self.search_service = search_service
         self.on_card_select = on_card_select
         self.on_card_double_click = on_card_double_click
@@ -33,26 +35,29 @@ class SearchPanel(ttk.Frame):
 
     def create_widgets(self):
         # --- Search Bar ---
-        ttk.Label(self, text="Search Cards").pack(anchor=tk.W)
+        Label(self, text="Search Cards", anchor="w").pack(anchor=tk.W, padx=5)
         
-        search_frame = ttk.Frame(self)
+        search_frame = Frame(self, fg_color="transparent")
         search_frame.pack(fill=tk.X, pady=5)
         
         self.search_var = tk.StringVar()
-        self.search_entry = ttk.Entry(search_frame, textvariable=self.search_var)
-        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.search_entry = Entry(search_frame, textvariable=self.search_var)
+        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         self.search_entry.bind('<Return>', lambda e: self.perform_search())
         
-        search_btn = ttk.Button(search_frame, text="Search", command=self.perform_search)
+        search_btn = Button(search_frame, text="Search", command=self.perform_search, width=80)
         search_btn.pack(side=tk.RIGHT, padx=5)
 
         # --- Filters ---
-        filter_frame = ttk.LabelFrame(self, text="Filters", padding=5)
-        filter_frame.pack(fill=tk.X, pady=5)
+        # CTk doesn't have LabelFrame, so we simulate it or use a Frame with a Label
+        filter_container = Frame(self)
+        filter_container.pack(fill=tk.X, pady=5, padx=5)
+        
+        Label(filter_container, text="Filters", font=("Arial", 10, "bold")).pack(anchor=tk.W, padx=5, pady=2)
 
         # Colors
-        color_frame = ttk.Frame(filter_frame)
-        color_frame.pack(fill=tk.X)
+        color_frame = Frame(filter_container, fg_color="transparent")
+        color_frame.pack(fill=tk.X, padx=5)
         
         self.color_vars = {}
         colors = [('W', 'White'), ('U', 'Blue'), ('B', 'Black'), ('R', 'Red'), ('G', 'Green')]
@@ -60,54 +65,54 @@ class SearchPanel(ttk.Frame):
         for code, name in colors:
             var = tk.BooleanVar()
             self.color_vars[code] = var
-            cb = ttk.Checkbutton(color_frame, text=code, variable=var)
+            cb = CheckBox(color_frame, text=code, variable=var, width=40)
             cb.pack(side=tk.LEFT, padx=2)
 
         # Type
-        type_frame = ttk.Frame(filter_frame)
-        type_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(type_frame, text="Type:").pack(side=tk.LEFT)
+        type_frame = Frame(filter_container, fg_color="transparent")
+        type_frame.pack(fill=tk.X, pady=5, padx=5)
+        Label(type_frame, text="Type:").pack(side=tk.LEFT)
         
-        self.type_var = tk.StringVar()
-        type_combo = ttk.Combobox(type_frame, textvariable=self.type_var, 
+        self.type_var = tk.StringVar(value="Any")
+        type_combo = ComboBox(type_frame, variable=self.type_var, 
                                 values=["Any", "Creature", "Artifact", "Enchantment", "Instant", "Sorcery", "Planeswalker", "Land"],
-                                state="readonly", width=15)
-        type_combo.current(0)
+                                state="readonly", width=120)
         type_combo.pack(side=tk.LEFT, padx=5)
 
         # Subtype
-        ttk.Label(type_frame, text="Subtype:").pack(side=tk.LEFT, padx=(10, 0))
+        Label(type_frame, text="Subtype:").pack(side=tk.LEFT, padx=(10, 0))
         self.subtype_var = tk.StringVar()
-        self.subtype_entry = ttk.Entry(type_frame, textvariable=self.subtype_var, width=15)
+        self.subtype_entry = Entry(type_frame, textvariable=self.subtype_var, width=120)
         self.subtype_entry.pack(side=tk.LEFT, padx=5)
         
-        ttk.Button(type_frame, text="...", width=3, command=self.open_subtype_selector).pack(side=tk.LEFT)
+        Button(type_frame, text="...", width=30, command=self.open_subtype_selector).pack(side=tk.LEFT)
 
         # Advanced Filters (CMC, Text)
-        adv_frame = ttk.Frame(filter_frame)
-        adv_frame.pack(fill=tk.X, pady=5)
+        adv_frame = Frame(filter_container, fg_color="transparent")
+        adv_frame.pack(fill=tk.X, pady=5, padx=5)
         
-        ttk.Label(adv_frame, text="CMC:").pack(side=tk.LEFT)
+        Label(adv_frame, text="CMC:").pack(side=tk.LEFT)
         self.cmc_var = tk.StringVar()
-        ttk.Entry(adv_frame, textvariable=self.cmc_var, width=5).pack(side=tk.LEFT, padx=5)
+        Entry(adv_frame, textvariable=self.cmc_var, width=50).pack(side=tk.LEFT, padx=5)
         
-        ttk.Label(adv_frame, text="Text/Keyword:").pack(side=tk.LEFT, padx=(10, 0))
+        Label(adv_frame, text="Text/Keyword:").pack(side=tk.LEFT, padx=(10, 0))
         self.text_var = tk.StringVar()
-        ttk.Entry(adv_frame, textvariable=self.text_var, width=20).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        Entry(adv_frame, textvariable=self.text_var, width=150).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
         # Commander Identity Filter
-        cmd_filter_frame = ttk.Frame(filter_frame)
-        cmd_filter_frame.pack(fill=tk.X, pady=2)
-        ttk.Checkbutton(cmd_filter_frame, text="Filter by Commander Identity", 
+        cmd_filter_frame = Frame(filter_container, fg_color="transparent")
+        cmd_filter_frame.pack(fill=tk.X, pady=2, padx=5)
+        CheckBox(cmd_filter_frame, text="Filter by Commander Identity", 
                        variable=self.filter_commander_identity).pack(side=tk.LEFT)
 
         # Settings Button
-        settings_btn = ttk.Button(filter_frame, text="Search Settings", command=self.open_settings_callback)
-        settings_btn.pack(side=tk.RIGHT, padx=5)
+        settings_btn = Button(filter_container, text="Search Settings", command=self.open_settings_callback, height=24)
+        settings_btn.pack(side=tk.RIGHT, padx=5, pady=5)
 
         # --- Results List ---
+        # Using standard Listbox for now as CTk doesn't have a direct replacement
         self.results_list = tk.Listbox(self, selectmode=tk.EXTENDED)
-        self.results_list.pack(fill=tk.BOTH, expand=True, pady=5)
+        self.results_list.pack(fill=tk.BOTH, expand=True, pady=5, padx=5)
         self.results_list.bind('<<ListboxSelect>>', self._on_list_select)
         self.results_list.bind('<Double-1>', lambda e: self.on_card_double_click())
 

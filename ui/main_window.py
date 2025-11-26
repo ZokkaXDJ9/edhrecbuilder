@@ -1,5 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+import customtkinter as ctk
+from ui.widgets import BaseWindow, BaseToplevel, Button, Label, Frame, Entry, CheckBox, ComboBox, ScrollableFrame, set_appearance_mode, set_default_color_theme
 import requests
 import threading
 import queue
@@ -24,10 +26,17 @@ from ui.panels.details_panel import DetailsPanel
 from utils import UNLIMITED_CARDS
 from ui.dialogs.versions_dialog import VersionsDialog
 from ui.dialogs.settings_dialog import SettingsDialog
+from services.settings_service import SettingsService
 
-class MTGDeckBuilder(tk.Tk):
+# Initialize settings before creating app
+settings_service = SettingsService()
+settings_service.apply_settings()
+
+class MTGDeckBuilder(BaseWindow):
     def __init__(self):
         super().__init__()
+        
+        self.settings_service = settings_service
 
         self.title("MTG Commander Deckbuilder")
         self.geometry("1200x800")
@@ -116,26 +125,62 @@ class MTGDeckBuilder(tk.Tk):
         tools_menu.add_command(label="Delete All Data & Restart", command=self.reset_and_restart)
 
     def open_settings(self):
-        SettingsDialog(self, self.open_search_settings)
+        self.settings_dialog = SettingsDialog(self, self.open_search_settings, self.settings_service, self.reload_ui)
+
+    def reload_ui(self):
+        # Save state
+        saved_search_prefs = None
+        if hasattr(self, 'search_panel'):
+             saved_search_prefs = {k: v.get() for k, v in self.search_panel.search_prefs.items()}
+
+        # Check if settings dialog is open
+        settings_open = False
+        if hasattr(self, 'settings_dialog') and self.settings_dialog.winfo_exists():
+             settings_open = True
+             self.settings_dialog.destroy()
+
+        # Destroy all child widgets (except menus and toplevels)
+        for widget in self.winfo_children():
+            if isinstance(widget, (tk.Menu, tk.Toplevel, ctk.CTkToplevel)):
+                continue
+            widget.destroy()
+            
+        # Re-create widgets
+        self.create_widgets()
+        
+        # Restore UI state
+        self.deck_panel.refresh_deck(self.deck)
+        self.deck_panel.update_commander(self.commander, self.image_loader)
+        
+        if saved_search_prefs:
+             for k, v in saved_search_prefs.items():
+                 if k in self.search_panel.search_prefs:
+                     self.search_panel.search_prefs[k].set(v)
+
+        if settings_open:
+             # Reopen settings after a short delay to ensure UI is ready
+             self.after(100, self.open_settings)
+
+        self.status_var.set("Theme updated")
 
     def create_widgets(self):
         # Status Bar (Pack first to stay at bottom)
-        status_frame = ttk.Frame(self, relief=tk.SUNKEN, padding=(2, 2))
+        status_frame = Frame(self, height=25)
         status_frame.pack(side=tk.BOTTOM, fill=tk.X)
         
         self.status_var = tk.StringVar()
         self.status_var.set("Ready")
-        status_label = ttk.Label(status_frame, textvariable=self.status_var, anchor=tk.W)
-        status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        status_label = Label(status_frame, textvariable=self.status_var, anchor="w")
+        status_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
         # Main Layout
-        left_panel_frame = ttk.Frame(self)
+        left_panel_frame = Frame(self)
         left_panel_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        center_panel_frame = ttk.Frame(self)
+        center_panel_frame = Frame(self)
         center_panel_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        right_panel_frame = ttk.Frame(self)
+        right_panel_frame = Frame(self)
         right_panel_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
         # --- Panels ---
@@ -147,15 +192,15 @@ class MTGDeckBuilder(tk.Tk):
             self.open_search_settings,
             lambda: self.commander
         )
-        self.search_panel.pack(fill=tk.BOTH, expand=True)
+        self.search_panel.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Add buttons below search panel
-        btn_frame = ttk.Frame(left_panel_frame)
+        btn_frame = Frame(left_panel_frame, fg_color="transparent")
         btn_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        ttk.Button(btn_frame, text="Add to Deck", command=self.add_card_to_deck).pack(fill=tk.X, pady=2)
-        ttk.Button(btn_frame, text="Set as Commander", command=self.set_commander).pack(fill=tk.X, pady=2)
-        ttk.Button(btn_frame, text="Get Recommendations (EDHRec)", command=self.get_recommendations).pack(fill=tk.X, pady=2)
+        Button(btn_frame, text="Add to Deck", command=self.add_card_to_deck).pack(fill=tk.X, pady=2)
+        Button(btn_frame, text="Set as Commander", command=self.set_commander).pack(fill=tk.X, pady=2)
+        Button(btn_frame, text="Get Recommendations (EDHRec)", command=self.get_recommendations).pack(fill=tk.X, pady=2)
 
         self.deck_panel = DeckPanel(
             center_panel_frame,
@@ -165,7 +210,7 @@ class MTGDeckBuilder(tk.Tk):
             self.open_preview,
             self.change_card_version
         )
-        self.deck_panel.pack(fill=tk.BOTH, expand=True)
+        self.deck_panel.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         self.details_panel = DetailsPanel(
             right_panel_frame, 
@@ -173,7 +218,7 @@ class MTGDeckBuilder(tk.Tk):
             self.search_service,
             self.add_card_from_dialog
         )
-        self.details_panel.pack(fill=tk.BOTH, expand=True)
+        self.details_panel.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # Status Bar (Moved to top of create_widgets)
 
@@ -369,41 +414,38 @@ class MTGDeckBuilder(tk.Tk):
         ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=5)
 
     def open_search_settings(self):
-        # This logic was in main_window. It's UI.
-        # We can move it to a dialog class or keep it here if simple.
-        # Since we moved search prefs to SearchPanel, we should probably ask SearchPanel to open it?
-        # Or pass the prefs to a dialog.
-        # The SearchPanel has the prefs.
-        # Let's implement a simple dialog here or in SearchPanel.
-        # Actually, SearchPanel has open_settings_callback.
-        # Let's move the logic to SearchPanel or a new Dialog class.
-        # For now, let's keep it simple and implement it here but accessing SearchPanel's prefs.
-        
-        settings_win = tk.Toplevel(self)
+        settings_win = BaseToplevel(self)
         settings_win.title("Search Settings")
         settings_win.geometry("400x600")
+        settings_win.attributes("-topmost", True) # Fix z-order issue
         
-        main_frame = ttk.Frame(settings_win, padding=10)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # Make it modal-like
+        settings_win.transient(self)
+        settings_win.grab_set()
+        settings_win.focus_force()
         
-        ttk.Label(main_frame, text="General Exclusions:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+        main_frame = ScrollableFrame(settings_win)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        Label(main_frame, text="General Exclusions:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
         
         prefs = self.search_panel.search_prefs
         
-        ttk.Checkbutton(main_frame, text="Include Digital-Only Cards (Alchemy)", 
+        CheckBox(main_frame, text="Include Digital-Only Cards (Alchemy)", 
                        variable=prefs['include_alchemy']).pack(anchor=tk.W, padx=20, pady=2)
-        ttk.Checkbutton(main_frame, text="Include Silver-Bordered Cards (Un-sets)", 
+        CheckBox(main_frame, text="Include Silver-Bordered Cards (Un-sets)", 
                        variable=prefs['include_silver']).pack(anchor=tk.W, padx=20, pady=2)
-        ttk.Checkbutton(main_frame, text="Include Playtest Cards", 
+        CheckBox(main_frame, text="Include Playtest Cards", 
                        variable=prefs['include_playtest']).pack(anchor=tk.W, padx=20, pady=2)
-        ttk.Checkbutton(main_frame, text="Include Oversized Cards", 
+        CheckBox(main_frame, text="Include Oversized Cards", 
                        variable=prefs['include_oversized']).pack(anchor=tk.W, padx=20, pady=2)
-        ttk.Checkbutton(main_frame, text="Include Funny / Joke Cards", 
+        CheckBox(main_frame, text="Include Funny / Joke Cards", 
                        variable=prefs['include_funny']).pack(anchor=tk.W, padx=20, pady=2)
         
-        ttk.Separator(main_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=15)
+        # Separator simulation
+        Frame(main_frame, height=2, fg_color="gray50").pack(fill=tk.X, pady=15)
         
-        ttk.Label(main_frame, text="Universes Beyond (Crossovers):", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+        Label(main_frame, text="Universes Beyond (Crossovers):", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
         
         def toggle_ub_group():
             val = prefs['include_ub_group'].get()
@@ -411,19 +453,19 @@ class MTGDeckBuilder(tk.Tk):
                 prefs[key].set(val)
             prefs['ub_other'].set(val)
 
-        ttk.Checkbutton(main_frame, text="Include All Universes Beyond", 
+        CheckBox(main_frame, text="Include All Universes Beyond", 
                        variable=prefs['include_ub_group'],
                        command=toggle_ub_group).pack(anchor=tk.W, padx=5, pady=2)
         
-        ub_frame = ttk.Frame(main_frame)
+        ub_frame = Frame(main_frame, fg_color="transparent")
         ub_frame.pack(anchor=tk.W, padx=20)
         
         for name, key, _ in self.ub_sets_config:
-            ttk.Checkbutton(ub_frame, text=name, variable=prefs[key]).pack(anchor=tk.W, pady=1)
+            CheckBox(ub_frame, text=name, variable=prefs[key]).pack(anchor=tk.W, pady=1)
             
-        ttk.Checkbutton(ub_frame, text="Other / Secret Lair", variable=prefs['ub_other']).pack(anchor=tk.W, pady=1)
+        CheckBox(ub_frame, text="Other / Secret Lair", variable=prefs['ub_other']).pack(anchor=tk.W, pady=1)
 
-        ttk.Button(settings_win, text="Close", command=settings_win.destroy).pack(pady=20)
+        Button(settings_win, text="Close", command=settings_win.destroy).pack(pady=20)
 
     # --- Data Fetching Logic (Stubs) ---
 
@@ -570,6 +612,7 @@ class MTGDeckBuilder(tk.Tk):
             
         generator = self.db.get_all_cards_generator()
         
+        i = 0
         for i, card in enumerate(generator):
             if self.stop_download:
                 break

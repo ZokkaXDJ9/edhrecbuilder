@@ -1,10 +1,12 @@
 import tkinter as tk
 from tkinter import ttk
+import customtkinter as ctk
 from ui.dialogs.versions_dialog import VersionsDialog
+from ui.widgets import Frame, Label, Button, Textbox
 
-class DetailsPanel(ttk.Frame):
+class DetailsPanel(Frame):
     def __init__(self, parent, image_loader, search_service=None, on_add_card=None):
-        super().__init__(parent, padding="10")
+        super().__init__(parent)
         self.image_loader = image_loader
         self.search_service = search_service
         self.on_add_card = on_add_card
@@ -13,32 +15,32 @@ class DetailsPanel(ttk.Frame):
         self.create_widgets()
 
     def create_widgets(self):
-        ttk.Label(self, text="Card Preview").pack(anchor=tk.W)
+        Label(self, text="Card Preview", anchor="w").pack(anchor=tk.W, padx=5)
         
-        self.image_label = ttk.Label(self, text="No Image Selected")
+        self.image_label = Label(self, text="No Image Selected")
         self.image_label.pack(pady=10)
         
         # Buttons Frame
-        self.btn_frame = ttk.Frame(self)
-        self.btn_frame.pack(fill=tk.X, pady=5)
+        self.btn_frame = Frame(self, fg_color="transparent")
+        self.btn_frame.pack(fill=tk.X, pady=5, padx=5)
         
-        self.flip_btn = ttk.Button(self.btn_frame, text="Flip Card", command=self.flip_card)
+        self.flip_btn = Button(self.btn_frame, text="Flip Card", command=self.flip_card)
         self.flip_btn.pack(side=tk.LEFT, padx=5)
         self.flip_btn.pack_forget() # Hide initially
         
-        self.versions_btn = ttk.Button(self.btn_frame, text="View Alt Arts / Versions", command=self.open_versions)
+        self.versions_btn = Button(self.btn_frame, text="View Alt Arts / Versions", command=self.open_versions)
         self.versions_btn.pack(side=tk.RIGHT, padx=5)
-        self.versions_btn.config(state=tk.DISABLED)
+        self.versions_btn.configure(state=tk.DISABLED)
 
-        self.card_text = tk.Text(self, height=10, wrap=tk.WORD)
-        self.card_text.pack(fill=tk.BOTH, expand=True)
+        self.card_text = Textbox(self, height=200, wrap=tk.WORD)
+        self.card_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
     def display_card(self, card):
         self.current_card = card
         self.current_face_index = 0
         
         # Enable versions button
-        self.versions_btn.config(state=tk.NORMAL)
+        self.versions_btn.configure(state=tk.NORMAL)
         
         # Check for faces for Flip button
         has_faces = 'card_faces' in card and len(card['card_faces']) > 1
@@ -54,7 +56,7 @@ class DetailsPanel(ttk.Frame):
             self.flip_btn.pack_forget()
 
         # Update text
-        self.card_text.delete(1.0, tk.END)
+        self.card_text.delete("1.0", tk.END)
         
         if 'card_faces' in card:
             text_display = ""
@@ -102,11 +104,11 @@ class DetailsPanel(ttk.Frame):
         if image_url:
             self.image_loader.get_image(image_url, lambda photo: self.after(0, lambda: self._update_image_label(photo)))
         else:
-            self.image_label.config(image='', text="No Image Available")
+            self.image_label.configure(image=None, text="No Image Available")
 
     def _update_image_label(self, photo):
-        self.image_label.config(image=photo, text="")
-        self.image_label.image = photo  # Keep reference
+        self.image_label.configure(image=photo, text="")
+        self._current_image = photo  # Keep reference
 
     def open_versions(self):
         if not self.current_card or not self.search_service:
