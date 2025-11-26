@@ -7,6 +7,8 @@ import time
 import json
 import os
 import re
+import sys
+import shutil
 
 from database import CardDatabase
 from ui.preview_window import DeckPreviewWindow
@@ -20,6 +22,7 @@ from ui.panels.search_panel import SearchPanel
 from ui.panels.deck_panel import DeckPanel
 from ui.panels.details_panel import DetailsPanel
 from utils import UNLIMITED_CARDS
+from ui.dialogs.versions_dialog import VersionsDialog
 
 class MTGDeckBuilder(tk.Tk):
     def __init__(self):
@@ -47,8 +50,7 @@ class MTGDeckBuilder(tk.Tk):
         self.deck_service = DeckService()
         self.legality_service = LegalityService(self.session)
         
-        # Update banlist at startup
-        self.legality_service.update_banlist()
+        # Banlist update moved to background thread
         
         self.ub_sets_config = [
             ("Warhammer 40,000", "ub_40k", ["40k"]),
@@ -71,6 +73,18 @@ class MTGDeckBuilder(tk.Tk):
 
         self.create_menu()
         self.create_widgets()
+        
+        # Startup tasks in background (After widgets created so status bar exists)
+        def startup_tasks():
+            self.after(0, lambda: self.status_var.set("Updating banlist..."))
+            self.legality_service.update_banlist()
+            
+            self.after(0, lambda: self.status_var.set("Loading creature types..."))
+            self.search_service.get_creature_types()
+            
+            self.after(0, lambda: self.status_var.set("Ready"))
+        
+        threading.Thread(target=startup_tasks, daemon=True).start()
         
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
@@ -97,8 +111,18 @@ class MTGDeckBuilder(tk.Tk):
         tools_menu.add_command(label="Bulk-Download all Images", command=self.download_all_images)
         tools_menu.add_separator()
         tools_menu.add_command(label="Update Database (Offline Mode)", command=self.update_database)
+        tools_menu.add_command(label="Delete All Data & Restart", command=self.reset_and_restart)
 
     def create_widgets(self):
+        # Status Bar (Pack first to stay at bottom)
+        status_frame = ttk.Frame(self, relief=tk.SUNKEN, padding=(2, 2))
+        status_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        self.status_var = tk.StringVar()
+        self.status_var.set("Ready")
+        status_label = ttk.Label(status_frame, textvariable=self.status_var, anchor=tk.W)
+        status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
         # Main Layout
         left_panel_frame = ttk.Frame(self)
         left_panel_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -133,18 +157,20 @@ class MTGDeckBuilder(tk.Tk):
             self.on_deck_select,
             self.on_commander_click,
             self.remove_card,
-            self.open_preview
+            self.open_preview,
+            self.change_card_version
         )
         self.deck_panel.pack(fill=tk.BOTH, expand=True)
 
-        self.details_panel = DetailsPanel(right_panel_frame, self.image_loader)
+        self.details_panel = DetailsPanel(
+            right_panel_frame, 
+            self.image_loader,
+            self.search_service,
+            self.add_card_from_dialog
+        )
         self.details_panel.pack(fill=tk.BOTH, expand=True)
 
-        # Status Bar
-        self.status_var = tk.StringVar()
-        self.status_var.set("Ready")
-        status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
-        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        # Status Bar (Moved to top of create_widgets)
 
     # --- Event Handlers ---
 
@@ -183,13 +209,29 @@ class MTGDeckBuilder(tk.Tk):
         if errors and added_count == 0:
              messagebox.showwarning("Add Card", errors[0])
 
-    def _add_single_card(self, card):
-        # If stub, ensure fetching
-        if card.get('is_stub'):
-            if not card.get('fetching'):
-                card['fetching'] = True
-                self.fetch_queue.put(card)
+    def add_card_from_dialog(self, card):
+        success, msg = self._add_single_card(card)
+        if success:
+            messagebox.showinfo("Success", f"Added {card.get('name')} to deck.")
+        elif msg:
+            messagebox.showwarning("Error", msg)
+
+    def change_card_version(self, index):
+        if index < 0 or index >= len(self.deck):
+            return
+            
+        card = self.deck[index]
         
+        def on_version_selected(new_card):
+            # Replace card in deck
+            self.deck[index] = new_card
+            self.deck_panel.refresh_deck(self.deck)
+            self.details_panel.display_card(new_card)
+            messagebox.showinfo("Success", f"Updated version for {new_card.get('name')}.")
+            
+        VersionsDialog(self, card, self.search_service, self.image_loader, on_version_selected, action_label="Update Version")
+
+    def _add_single_card(self, card):
         card_name = card.get('name')
         type_line = card.get('type_line', '')
 
@@ -215,8 +257,25 @@ class MTGDeckBuilder(tk.Tk):
         if not is_basic and not is_unlimited and current_count >= 1:
             return False, f"You can only have one copy of {card_name} in your deck."
             
+        # Prepare card for deck
+        # If it's a full card (from search), copy it and mark as stub to force fetch of latest version
+        # This ensures we always use the latest version unless explicitly changed later
+        if not card.get('is_stub'):
+             card = card.copy()
+             card['is_stub'] = True
+             card['fetching'] = False
+        
+        # Mark as default version so UI hides set info
+        card['is_default_version'] = True
+            
         self.deck.append(card)
         self.deck_panel.add_card(card)
+        
+        # Queue fetch
+        if card.get('is_stub') and not card.get('fetching'):
+             card['fetching'] = True
+             self.fetch_queue.put(card)
+             
         return True, None
 
     def remove_card(self):
@@ -411,15 +470,13 @@ class MTGDeckBuilder(tk.Tk):
             if 'fetching' in stub:
                 del stub['fetching']
             
+            # Refresh deck panel to show updated name/info
+            self.deck_panel.refresh_deck(self.deck)
+            
             # Refresh display if selected
             # We need to check if this card is currently selected in SearchPanel
             # SearchPanel doesn't expose selection easily, but we can check if DetailsPanel is showing it?
             # Actually, if we update the object in place, and then call display_card again if it matches...
-            
-            # Let's just refresh details panel if it's showing this card
-            # But DetailsPanel doesn't know which card it's showing (it just shows data).
-            # We can check if the name matches.
-            # Or we can just re-trigger selection logic if we knew what was selected.
             
             # For now, let's just rely on user re-clicking or if we can trigger a refresh.
             # If we are currently viewing this card:
@@ -731,3 +788,40 @@ class MTGDeckBuilder(tk.Tk):
         messagebox.showinfo("Import Complete", f"Processed {added_count} cards.\nErrors: {len(errors)}")
         if errors:
             print("\n".join(errors))
+
+    def reset_and_restart(self):
+        if not messagebox.askyesno("Reset & Restart", 
+            "Are you sure you want to delete ALL local data (database, images, pycache) and restart?\n\n"
+            "This action cannot be undone."):
+            return
+            
+        try:
+            # Delete files
+            if os.path.exists("cards.db"):
+                try:
+                    os.remove("cards.db")
+                except PermissionError:
+                    messagebox.showerror("Error", "Cannot delete database file. It might be in use.")
+                    return
+
+            if os.path.exists("creature_types.json"):
+                os.remove("creature_types.json")
+                
+            if os.path.exists("image_cache"):
+                shutil.rmtree("image_cache")
+
+            # Delete __pycache__ directories
+            for root, dirs, files in os.walk(os.getcwd()):
+                if "__pycache__" in dirs:
+                    try:
+                        shutil.rmtree(os.path.join(root, "__pycache__"))
+                        dirs.remove("__pycache__")
+                    except Exception as e:
+                        print(f"Failed to remove __pycache__ in {root}: {e}")
+                
+            # Restart
+            python = sys.executable
+            os.execl(python, python, *sys.argv)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to reset: {e}")

@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from ui.dialogs.multi_select_dialog import MultiSelectDialog
+
 class SearchPanel(ttk.Frame):
     def __init__(self, parent, search_service, on_card_select, on_card_double_click, open_settings_callback, get_commander_callback):
         super().__init__(parent, padding="10")
@@ -11,6 +13,7 @@ class SearchPanel(ttk.Frame):
         self.get_commander_callback = get_commander_callback
         
         self.current_search_results = []
+        self.creature_types = [] # Cache for types
         self.search_prefs = {
             'include_alchemy': tk.BooleanVar(value=False),
             'include_silver': tk.BooleanVar(value=False),
@@ -72,6 +75,26 @@ class SearchPanel(ttk.Frame):
         type_combo.current(0)
         type_combo.pack(side=tk.LEFT, padx=5)
 
+        # Subtype
+        ttk.Label(type_frame, text="Subtype:").pack(side=tk.LEFT, padx=(10, 0))
+        self.subtype_var = tk.StringVar()
+        self.subtype_entry = ttk.Entry(type_frame, textvariable=self.subtype_var, width=15)
+        self.subtype_entry.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(type_frame, text="...", width=3, command=self.open_subtype_selector).pack(side=tk.LEFT)
+
+        # Advanced Filters (CMC, Text)
+        adv_frame = ttk.Frame(filter_frame)
+        adv_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(adv_frame, text="CMC:").pack(side=tk.LEFT)
+        self.cmc_var = tk.StringVar()
+        ttk.Entry(adv_frame, textvariable=self.cmc_var, width=5).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(adv_frame, text="Text/Keyword:").pack(side=tk.LEFT, padx=(10, 0))
+        self.text_var = tk.StringVar()
+        ttk.Entry(adv_frame, textvariable=self.text_var, width=20).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+
         # Commander Identity Filter
         cmd_filter_frame = ttk.Frame(filter_frame)
         cmd_filter_frame.pack(fill=tk.X, pady=2)
@@ -89,9 +112,7 @@ class SearchPanel(ttk.Frame):
         self.results_list.bind('<Double-1>', lambda e: self.on_card_double_click())
 
     def perform_search(self):
-        query = self.search_var.get()
-        if not query:
-            return
+        query = self.search_var.get().strip()
 
         # Gather filters
         filters = {}
@@ -113,6 +134,21 @@ class SearchPanel(ttk.Frame):
         selected_type = self.type_var.get()
         if selected_type and selected_type != "Any":
             filters['type'] = selected_type
+
+        # Subtype
+        subtype = self.subtype_var.get()
+        if subtype:
+            filters['subtype'] = subtype
+
+        # CMC
+        cmc = self.cmc_var.get()
+        if cmc:
+            filters['cmc'] = cmc
+
+        # Text
+        text = self.text_var.get()
+        if text:
+            filters['text'] = text
 
         # Preferences
         prefs = {}
@@ -163,3 +199,20 @@ class SearchPanel(ttk.Frame):
         self.results_list.delete(0, tk.END)
         for card in cards:
             self.results_list.insert(tk.END, card.get('name'))
+
+    def open_subtype_selector(self):
+        if not self.creature_types:
+            self.creature_types = self.search_service.get_creature_types()
+            
+        if not self.creature_types:
+            messagebox.showerror("Error", "Could not fetch creature types.")
+            return
+
+        # Parse current selection from entry
+        current_text = self.subtype_var.get()
+        initial_selection = [s.strip() for s in current_text.split(',') if s.strip()]
+        
+        dialog = MultiSelectDialog(self, "Select Subtypes", self.creature_types, initial_selection)
+        
+        if dialog.result is not None:
+            self.subtype_var.set(", ".join(sorted(dialog.result)))

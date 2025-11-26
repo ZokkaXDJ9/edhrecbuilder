@@ -18,10 +18,6 @@ class LegalityService:
                 print(f"Error loading banlist: {e}")
 
     def update_banlist(self):
-        # Run in background
-        threading.Thread(target=self._fetch_banlist, daemon=True).start()
-
-    def _fetch_banlist(self):
         print("Updating banlist...")
         banned = set()
         # Scryfall query for cards banned in commander

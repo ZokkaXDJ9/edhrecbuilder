@@ -2,12 +2,13 @@ import tkinter as tk
 from tkinter import ttk
 
 class DeckPanel(ttk.Frame):
-    def __init__(self, parent, on_card_select, on_commander_click, on_remove_card, on_preview_deck):
+    def __init__(self, parent, on_card_select, on_commander_click, on_remove_card, on_preview_deck, on_change_version=None):
         super().__init__(parent, padding="10")
         self.on_card_select = on_card_select
         self.on_commander_click = on_commander_click
         self.on_remove_card = on_remove_card
         self.on_preview_deck = on_preview_deck
+        self.on_change_version = on_change_version
         
         self.deck_list_data = [] # List of card objects
         
@@ -31,14 +32,26 @@ class DeckPanel(ttk.Frame):
         self.deck_list.pack(fill=tk.BOTH, expand=True, pady=5)
         self.deck_list.bind('<<ListboxSelect>>', self._on_list_select)
 
-        remove_btn = ttk.Button(self, text="Remove Card", command=self.on_remove_card)
-        remove_btn.pack(fill=tk.X, pady=5)
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(fill=tk.X, pady=5)
+
+        remove_btn = ttk.Button(btn_frame, text="Remove Card", command=self.on_remove_card)
+        remove_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
+        
+        self.change_ver_btn = ttk.Button(btn_frame, text="Change Version", command=self.change_version, state=tk.DISABLED)
+        self.change_ver_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(2, 0))
         
         preview_btn = ttk.Button(self, text="Preview Deck", command=self.on_preview_deck)
         preview_btn.pack(fill=tk.X, pady=5)
         
         self.count_label = ttk.Label(self, text="Count: 0/99")
         self.count_label.pack(anchor=tk.W)
+
+    def change_version(self):
+        selection = self.deck_list.curselection()
+        if selection and self.on_change_version:
+            index = selection[0]
+            self.on_change_version(index)
 
     def update_commander(self, card, image_loader):
         if card:
@@ -60,7 +73,7 @@ class DeckPanel(ttk.Frame):
 
     def add_card(self, card):
         self.deck_list_data.append(card)
-        self.deck_list.insert(tk.END, card.get('name'))
+        self.deck_list.insert(tk.END, self._get_display_string(card))
         self.update_counts()
 
     def remove_selected(self):
@@ -84,6 +97,11 @@ class DeckPanel(ttk.Frame):
             index = selection[0]
             card = self.deck_list_data[index]
             self.on_card_select(card)
+            if hasattr(self, 'change_ver_btn'):
+                self.change_ver_btn.config(state=tk.NORMAL)
+        else:
+            if hasattr(self, 'change_ver_btn'):
+                self.change_ver_btn.config(state=tk.DISABLED)
 
     def get_selected_indices(self):
         return self.deck_list.curselection()
@@ -97,5 +115,18 @@ class DeckPanel(ttk.Frame):
         self.deck_list_data = list(cards) # Copy
         self.deck_list.delete(0, tk.END)
         for card in self.deck_list_data:
-            self.deck_list.insert(tk.END, card.get('name'))
+            self.deck_list.insert(tk.END, self._get_display_string(card))
         self.update_counts()
+
+    def _get_display_string(self, card):
+        name = card.get('name', 'Unknown')
+        
+        # If it's the default version (user didn't explicitly choose a printing), hide version info
+        if card.get('is_default_version', False):
+            return name
+            
+        set_code = card.get('set', '').upper()
+        cn = card.get('collector_number', '')
+        if set_code and cn:
+            return f"{name} ({set_code} #{cn})"
+        return name
